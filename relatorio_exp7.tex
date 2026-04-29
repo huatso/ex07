@@ -1,0 +1,1186 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{fancyhdr}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage{tabularx}
+
+\geometry{top=2.5cm,bottom=2.5cm,left=3cm,right=2.5cm}
+
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{PCS3335 -- Laboratório Digital A}
+\lhead{Experiência 7 -- Planejamento}
+\rfoot{\thepage}
+
+% ---- Estilo para código VHDL ----
+\lstdefinelanguage{VHDL2}{
+  keywords={library,use,entity,is,port,in,out,end,architecture,of,
+            signal,component,begin,process,if,then,elsif,else,case,when,
+            others,type,std_logic,std_logic_vector,downto,to,rising_edge,
+            unsigned,and,or,not,null,wait,assert,report,severity,note,
+            error,constant,variable,time,open,integer,range},
+  keywordstyle=\color{blue}\bfseries,
+  sensitive=false,
+  comment=[l]{--},
+  commentstyle=\color{gray}\itshape,
+  stringstyle=\color{orange},
+  morestring=[b]",
+}
+\lstset{
+  language=VHDL2,
+  basicstyle=\ttfamily\footnotesize,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  stepnumber=1,
+  numbersep=6pt,
+  frame=single,
+  breaklines=true,
+  breakatwhitespace=false,
+  captionpos=b,
+  tabsize=4,
+  showstringspaces=false,
+  xleftmargin=1.5em,
+  framexleftmargin=1.5em,
+}
+
+\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue,citecolor=blue}
+
+% ================================================================
+\begin{document}
+
+\begin{titlepage}
+  \centering
+  \vspace*{2cm}
+  {\Large\bfseries Escola Politécnica da USP\\
+  Departamento de Engenharia de Computação e Sistemas Digitais\\[0.5em]
+  PCS3335 -- Laboratório Digital A\par}
+  \vspace{2cm}
+  {\Huge\bfseries Experiência 7\\[0.4em]
+  Extensões ao Jogo do Tempo de Reação\par}
+  \vspace{1.5cm}
+  {\large\bfseries Extensões implementadas: A3 e B2\par}
+  \vspace{1cm}
+  \begin{tabular}{ll}
+    \textbf{Extensão A3:} & Exibição do menor tempo de reação via chave \\
+    \textbf{Extensão B2:} & Modo com dois jogadores, exibe vencedor no display \\
+  \end{tabular}
+  \vspace{2.5cm}
+  {\large Planejamento\par}
+  \vspace{1cm}
+  {\large \today\par}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% ================================================================
+\section{Extensões Escolhidas}
+
+O grupo optou pela combinação das extensões \textbf{A3} e \textbf{B2}.
+
+\subsection*{Extensão A3 -- Menor Tempo de Reação}
+Mediante uma chave (\texttt{SW[0]}) da placa FPGA, o jogador pode consultar
+nos \textit{displays} HEX0--HEX3 o \textbf{menor tempo de reação} registrado
+desde que a placa foi carregada. O pressionamento do \textit{reset} zera esse
+registro (restaura o valor sentinela \texttt{9999}).
+
+\subsection*{Extensão B2 -- Modo com Dois Jogadores}
+O jogo suporta \textbf{dois jogadores} que competem em sequência. Após ambos
+reagirem, o jogador com o \textbf{menor tempo} é exibido como vencedor no
+\textit{display} HEX4 (``\textbf{1}'' ou ``\textbf{2}''). Em caso de empate,
+o Jogador~1 é declarado vencedor.
+
+% ================================================================
+\section{Pseudocódigo}
+
+\begin{verbatim}
+PROGRAMA JogoTempoReacaoEstendido:
+
+  ENTRADAS : clock, reset, jogar,
+             resposta_J1, resposta_J2, show_min
+  SAIDAS   : HEX0-HEX3 (tempo ao vivo / vencedor / minimo),
+             HEX4 (identificacao do vencedor: "1" ou "2"),
+             ligado, estimulo, pulso, erro, pronto
+
+  VARIAVEIS PERSISTENTES:
+    tempo_J1, tempo_J2 : tempo de reacao BCD de cada jogador
+    tempo_min          : menor tempo historico  (init = 9999)
+
+  AO RESET:
+    tempo_J1, tempo_J2, tempo_min <- 9999
+    estado <- INICIAL
+
+  LACO PRINCIPAL:
+
+    ESTADO INICIAL:
+      SE show_min = 1: exibir tempo_min em HEX0-3
+      AGUARDAR jogar = 1
+      IR PARA VEZ_J1
+
+    ESTADO VEZ_J1  (botao = resposta_J1):
+      Ligar interface; aguardar estimulo (led acende)
+      SE resposta_J1 antes do estimulo: IR PARA FALHA
+      AO PRESSIONAR resposta_J1 apos estimulo:
+        medir largura do pulso -> tempo_J1
+        SE tempo_J1 < tempo_min: tempo_min <- tempo_J1
+      AGUARDAR soltar resposta_J1
+      IR PARA VEZ_J2
+
+    ESTADO VEZ_J2  (botao = resposta_J2):
+      Ligar interface; aguardar estimulo
+      SE resposta_J2 antes do estimulo: IR PARA FALHA
+      AO PRESSIONAR resposta_J2 apos estimulo:
+        medir largura do pulso -> tempo_J2
+        SE tempo_J2 < tempo_min: tempo_min <- tempo_J2
+      AGUARDAR soltar resposta_J2
+      IR PARA RESULTADO
+
+    ESTADO RESULTADO:
+      SE tempo_J1 <= tempo_J2:
+        vencedor <- "1" ;  exibir tempo_J1 em HEX0-3
+      SENAO:
+        vencedor <- "2" ;  exibir tempo_J2 em HEX0-3
+      Exibir vencedor em HEX4
+      pronto <- 1
+      SE show_min = 1: exibir tempo_min em HEX0-3  (prioridade A3)
+      AGUARDAR jogar = 1 para nova rodada
+
+    ESTADO FALHA:
+      erro <- 1
+      AGUARDAR reset
+\end{verbatim}
+
+% ================================================================
+\section{Arquitetura do Sistema}
+
+\subsection{Diagrama de Blocos}
+
+O sistema é composto pelos blocos funcionais descritos abaixo:
+
+\begin{itemize}
+    \item \textbf{\texttt{jogo\_tempo\_reacao\_uc}} -- máquina de estados
+      central (10 estados); emite \texttt{iniciar}, \texttt{sel\_j2},
+      \texttt{salva\_j1/j2} e \texttt{mostra\_resultado}. Inclui uma
+      pausa configurável entre J1 e J2.
+  \item \textbf{Mux de Resposta} -- seleciona \texttt{resposta\_J1} ou
+        \texttt{resposta\_J2} conforme \texttt{sel\_j2}.
+    \item \textbf{\texttt{interface\_leds\_botoes}} -- temporizador de espera
+      (BCD de 4 dígitos), detecção de burla; gera \texttt{estimulo} e
+      \texttt{pulso}.
+  \item \textbf{\texttt{medidor\_largura}} -- mede largura do pulso de reação
+        em ciclos de clock; expõe dígitos BCD via \texttt{db\_valorCont0-3}.
+  \item \textbf{Registradores de Tempo} -- capturam \texttt{tempo\_J1},
+        \texttt{tempo\_J2} e \texttt{tempo\_min} na borda de clock ativa de
+        \texttt{salva\_j1/j2}.
+  \item \textbf{Lógica de Vencedor} -- compara \texttt{tempo\_J1} vs
+        \texttt{tempo\_J2} como \texttt{unsigned}; produz \texttt{j1\_vence}
+        e \texttt{tempo\_winner}.
+  \item \textbf{Mux de Display (HEX0--3)} -- prioridade: \texttt{show\_min}
+        $>$ \texttt{mostra\_resultado} $>$ contagem ao vivo.
+    \item \textbf{HEX4} -- exibe ``1'' ou ``2'' somente no estado
+      \texttt{resultado}.
+  \item \textbf{\texttt{hex7seg} ($\times 8$)} -- conversores para as fontes
+        \textit{min} e \textit{winner}.
+\end{itemize}
+
+\begin{figure}[H]
+  \centering
+  \fbox{\parbox{0.9\textwidth}{\centering\vspace{0.5cm}
+    \textit{[Inserir diagrama de blocos gerado pelo Quartus ou desenhado manualmente]}
+  \vspace{0.5cm}}}
+  \caption{Diagrama de blocos do sistema estendido (A3 + B2).}
+  \label{fig:blocos}
+\end{figure}
+
+\subsection{Diagrama de Transição de Estados}
+
+A UC possui \textbf{9 estados}, descritos na Tabela~\ref{tab:estados}.
+
+\begin{table}[H]
+\centering
+\caption{Estados da unidade de controle.}
+\label{tab:estados}
+\begin{tabularx}{\textwidth}{clX}
+\toprule
+\textbf{Código} & \textbf{Estado} & \textbf{Saídas ativas / Condição de saída} \\
+\midrule
+0001 & \texttt{inicial}   &
+  Todos inativos. Transição: \texttt{jogar}='1' $\to$ \texttt{j1\_liga}. \\
+0010 & \texttt{j1\_liga}  &
+  \texttt{iniciar}='1', \texttt{sel\_j2}='0'.
+  \texttt{estimulo}='1' $\to$ \texttt{j1\_conta};
+  \texttt{erro\_interface}='1' $\to$ \texttt{falha}. \\
+0011 & \texttt{j1\_conta} &
+  \texttt{iniciar}='1'. \texttt{pronto\_medidor}='1' $\to$
+  \texttt{salva\_j1}='1' (1 ciclo) e \texttt{j1\_fim}. \\
+0100 & \texttt{j1\_fim}   &
+  \texttt{iniciar}='0'. Aguarda \texttt{pronto\_interface}='0'
+  $\to$ \texttt{j2\_liga}. \\
+0101 & \texttt{j2\_liga}  &
+  \texttt{iniciar}='1', \texttt{sel\_j2}='1'.
+  \texttt{estimulo}='1' $\to$ \texttt{j2\_conta};
+  \texttt{erro\_interface}='1' $\to$ \texttt{falha}. \\
+0110 & \texttt{j2\_conta} &
+  \texttt{iniciar}='1', \texttt{sel\_j2}='1'. \texttt{pronto\_medidor}='1'
+  $\to$ \texttt{salva\_j2}='1' (1 ciclo) e \texttt{j2\_fim}. \\
+0111 & \texttt{j2\_fim}   &
+  \texttt{iniciar}='0'. Aguarda \texttt{pronto\_interface}='0'
+  $\to$ \texttt{resultado}. \\
+1000 & \texttt{resultado} &
+  \texttt{pronto}='1', \texttt{mostra\_resultado}='1'.
+  \texttt{jogar}='1' $\to$ \texttt{j1\_liga} (nova rodada). \\
+1001 & \texttt{falha}     &
+  Permanece até \texttt{reset}='1'. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+  \centering
+  \fbox{\parbox{0.9\textwidth}{\centering\vspace{8cm}
+    \textit{[Inserir diagrama de transição de estados]}
+  \vspace{0.5cm}}}
+  \caption{Diagrama de transição de estados da UC\@.
+    \texttt{R} = reset assíncrono retorna a \texttt{inicial}.}
+  \label{fig:estados}
+\end{figure}
+
+% ================================================================
+\section{Decisões de Projeto}
+
+\subsection{Comparação BCD como Inteiro sem Sinal}
+Os tempos são armazenados em BCD de 4 dígitos concatenados em 16~bits
+(\texttt{Q3\&Q2\&Q1\&Q0}). A comparação via \texttt{unsigned} é válida pois
+cada dígito BCD assume apenas valores 0--9, preservando a ordem: por exemplo,
+BCD\,0009 $=$ \texttt{0x0009} $= 9 <$ BCD\,0010 $=$ \texttt{0x0010} $= 16$.
+Isso elimina a necessidade de um comparador digit-a-digit.
+
+\subsection{Saída Mealy para \texttt{salva\_j1/j2}}
+\texttt{salva\_j1} e \texttt{salva\_j2} são saídas Mealy: ficam em '1' por
+\textbf{exatamente 1 ciclo}, durante a transição
+\texttt{j1\_conta}$\to$\texttt{j1\_fim} (ou \texttt{j2\_conta}$\to$\texttt{j2\_fim}).
+Nesse ciclo, o registrador captura os valores estáveis de
+\texttt{q0\_m..q3\_m} (o contador do medidor já parou porque
+\texttt{contaCont}='0' no estado \texttt{fim} do medidor).
+
+\subsection{Sincronização via \texttt{pronto\_interface}}
+A UC aguarda \texttt{pronto\_interface}='0' nos estados \texttt{j1\_fim} e
+\texttt{j2\_fim}. O sinal é '1' enquanto a interface está em \texttt{fim}
+(aguardando o jogador soltar o botão) e cai para '0' ao retornar ao
+\texttt{inicial}. Isso impede que o mux de resposta comute com o botão do
+jogador anterior ainda pressionado.
+
+\subsection{Mux de Resposta}
+Um único \texttt{interface\_leds\_botoes} é reaproveitado para ambos os
+jogadores. O sinal \texttt{sel\_j2} controla um multiplexador combinacional
+que direciona \texttt{resposta\_J1} ou \texttt{resposta\_J2} para a
+interface, economizando área de lógica.
+
+\subsection{Prioridade de Display em HEX0--3}
+\begin{enumerate}
+  \item \texttt{show\_min}='1' $\Rightarrow$ menor tempo histórico (A3);
+  \item \texttt{mostra\_resultado}='1' $\Rightarrow$ tempo do vencedor (B2);
+  \item Caso contrário $\Rightarrow$ contagem ao vivo do medidor.
+\end{enumerate}
+
+\subsection{Valor Sentinela para o Mínimo}
+\texttt{tempo\_min} é inicializado em \texttt{0x9999} (BCD\,9999) após o
+reset. Qualquer medição válida será menor, garantindo a substituição correta
+no primeiro jogo.
+
+\subsection{Desempate}
+Em caso de empate (\texttt{tempo\_J1 = tempo\_J2}), o Jogador~1 vence
+pela condição \texttt{$\leq$} na comparação. Comportamento documentado e
+aceitável pelos requisitos de B2.
+
+% ================================================================
+\section{Plano de Testes}
+
+\subsection{Configuração da Bancada}
+\begin{itemize}
+  \item Clock: 1\,kHz (Analog Discovery -- Patterns, DIO0);
+  \item Reset: Static I/O (DIO1);  Jogar: Static I/O (DIO2);
+  \item Resposta J1: botão externo (DIO7 / GPIO\_0\_D5);
+  \item Resposta J2: botão externo adicional (DIO9 / GPIO\_0\_D7);
+  \item \texttt{show\_min}: chave SW[0] da placa;
+  \item \texttt{estimulo}: LED externo usado como indicação de estímulo;
+  \item Estímulo: LED externo (DIO15);  Erro: LED externo (DIO14);
+  \item Displays: HEX0--HEX4 na placa DE0-CV\@.
+\end{itemize}
+
+\subsection{Casos de Teste}
+
+\begin{longtable}{>{\centering}p{0.5cm}
+                  p{4.1cm} p{4.1cm} p{4.3cm}}
+\caption{Plano de testes -- Extensões A3 e B2.}
+\label{tab:plano}\\
+\toprule
+\textbf{CT} & \textbf{Ação / Estímulo} & \textbf{Resultado Esperado}
+            & \textbf{Verificação} \\
+\midrule\endfirsthead
+\multicolumn{4}{c}{\textit{(continuação)}}\\
+\toprule
+\textbf{CT} & \textbf{Ação / Estímulo} & \textbf{Resultado Esperado}
+            & \textbf{Verificação} \\
+\midrule\endhead
+\bottomrule\endfoot
+
+0 & \textbf{Reset inicial.} Acionar reset por $\geq$2 ciclos.
+  & \texttt{ligado}=0, \texttt{estimulo}=0, \texttt{erro}=0,
+    \texttt{pronto}=0. HEX0--4 apagados.
+  & Observar LEDs e displays. \texttt{db\_estado}=0001. \\
+\midrule
+
+1 & \textbf{Rodada normal -- J2 vence.} Pulsar \texttt{jogar};
+    J1 reage em 500\,ms; J2 reage em 300\,ms.
+  & \texttt{pronto}=1. HEX4=``2''. HEX0--3 mostra tempo de J2.
+  & Conferir HEX4=``2''. Comparar HEX0--3 com tempo J2. \\
+\midrule
+
+2 & \textbf{Rodada normal -- J1 vence.} No estado \texttt{resultado},
+    pulsar \texttt{jogar}; J1 reage em 200\,ms; J2 em 600\,ms.
+  & \texttt{pronto}=1. HEX4=``1''. HEX0--3 mostra tempo de J1.
+  & Conferir HEX4=``1''. Comparar HEX0--3 com tempo J1. \\
+\midrule
+
+3 & \textbf{Burla de J1.} Iniciar rodada; pressionar
+    \texttt{resposta\_J1} \emph{antes} do estímulo.
+  & \texttt{erro}=1. Estado \texttt{falha}. LED erro aceso.
+    \texttt{jogar} não reinicia.
+  & Verificar LED erro. Aplicar reset; confirmar retorno a
+    \texttt{inicial}. \\
+\midrule
+
+4 & \textbf{Burla de J2.} J1 reage normalmente; J2 pressiona antes
+    do estímulo.
+  & \texttt{erro}=1. Estado \texttt{falha} durante vez de J2.
+  & Verificar LED erro. Aplicar reset. \\
+\midrule
+
+5 & \textbf{Chave \texttt{show\_min} (A3).} Após CT1 e CT2, acionar
+    \texttt{show\_min}=1 sem pressionar jogar.
+  & HEX0--3 exibe o menor tempo de todas as rodadas.
+    HEX4 inalterado.
+  & Comparar display com menor tempo observado. \\
+\midrule
+
+6 & \textbf{Reset zera mínimo (A3).} Acionar reset com
+    \texttt{show\_min}=1.
+  & HEX0--3 exibe ``9999'' (sentinela).
+  & Verificar HEX0--3 = 9\,9\,9\,9. \\
+\midrule
+
+7 & \textbf{Empate.} J1 e J2 reagem no mesmo número de ciclos.
+  & HEX4=``1'' (J1 vence por desempate).
+  & Conferir HEX4=``1''. \\
+\midrule
+
+8 & \textbf{\texttt{show\_min} durante rodada ativa.} Ativar
+    \texttt{show\_min}=1 enquanto o jogo está em progresso.
+  & HEX0--3 exibe mínimo histórico; jogo continua normalmente.
+    Ao desligar: volta à contagem ao vivo.
+  & Observar transição dos displays. \\
+
+\end{longtable}
+
+% ================================================================
+\section{Bancada de Testes (Testbench VHDL)}
+
+O testbench cobre \textbf{8 casos de teste} (CT0--CT7), com clock de 100\,ps
+compatível com ModelSim. Utiliza \textit{procedures} VHDL para reutilizar
+sequências repetitivas (\texttt{pulsa\_jogar}, \texttt{aplica\_reset},
+\texttt{reage\_j1/j2}, \texttt{verifica\_vencedor}).
+Na versão atual, a troca entre J1 e J2 inclui uma pausa configurável e o
+LED \texttt{estimulo} pode ser usado como indicação visual da fase ativa.
+
+\begin{lstlisting}[caption={Bancada de testes -- \texttt{jogo\_tempo\_reacao\_tb.vhd}},
+                   label={lst:tb}]
+LIBRARY ieee;
+USE ieee.std_logic_1164.ALL;
+USE ieee.numeric_std.ALL;
+
+-- =============================================================
+-- Bancada de Testes: Jogo do Tempo de Reacao (Extensoes A3+B2)
+-- Clock de simulacao: 100 ps
+-- Mapeamento de display4 (anodo comum):
+--   "1111001" => digito "1"  (J1 venceu)
+--   "0100100" => digito "2"  (J2 venceu)
+--   "1111111" => apagado     (fora do estado resultado)
+--
+-- Casos de teste:
+--   CT0 : reset inicial
+--   CT1 : rodada normal, J2 vence (J1=5 ciclos, J2=3 ciclos)
+--   CT2 : nova rodada,   J1 vence (J1=2 ciclos, J2=6 ciclos)
+--   CT3 : empate         -> J1 vence por criterio de desempate
+--   CT4 : burla de J1    -> estado falha
+--   CT5 : burla de J2    -> estado falha
+--   CT6 : show_min (A3)  -> HEX0-3 exibe menor tempo historico
+--   CT7 : reset zera minimo (A3) -> HEX0-3 exibe 9999
+-- =============================================================
+
+ENTITY jogo_tempo_reacao_tb IS
+END ENTITY;
+
+ARCHITECTURE tb OF jogo_tempo_reacao_tb IS
+
+    COMPONENT jogo_tempo_reacao IS
+        PORT (
+            clock       : IN  STD_LOGIC;
+            reset       : IN  STD_LOGIC;
+            jogar       : IN  STD_LOGIC;
+            resposta_j1 : IN  STD_LOGIC;
+            resposta_j2 : IN  STD_LOGIC;
+            show_min    : IN  STD_LOGIC;
+            display0    : OUT STD_LOGIC_VECTOR(6 DOWNTO 0);
+            display1    : OUT STD_LOGIC_VECTOR(6 DOWNTO 0);
+            display2    : OUT STD_LOGIC_VECTOR(6 DOWNTO 0);
+            display3    : OUT STD_LOGIC_VECTOR(6 DOWNTO 0);
+            display4    : OUT STD_LOGIC_VECTOR(6 DOWNTO 0);
+            ligado      : OUT STD_LOGIC;
+            pulso       : OUT STD_LOGIC;
+            estimulo    : OUT STD_LOGIC;
+            erro        : OUT STD_LOGIC;
+            pronto      : OUT STD_LOGIC
+        );
+    END COMPONENT;
+
+    CONSTANT T : TIME := 100 ps;
+
+    CONSTANT SEG_1   : STD_LOGIC_VECTOR(6 DOWNTO 0) := "1111001";
+    CONSTANT SEG_2   : STD_LOGIC_VECTOR(6 DOWNTO 0) := "0100100";
+    CONSTANT SEG_OFF : STD_LOGIC_VECTOR(6 DOWNTO 0) := "1111111";
+
+    SIGNAL clock_in    : STD_LOGIC := '0';
+    SIGNAL reset_in    : STD_LOGIC := '0';
+    SIGNAL jogar_in    : STD_LOGIC := '0';
+    SIGNAL resp_j1     : STD_LOGIC := '0';
+    SIGNAL resp_j2     : STD_LOGIC := '0';
+    SIGNAL show_min_in : STD_LOGIC := '0';
+
+    SIGNAL estimulo_s  : STD_LOGIC;
+    SIGNAL erro_s      : STD_LOGIC;
+    SIGNAL pronto_s    : STD_LOGIC;
+    SIGNAL ligado_s    : STD_LOGIC;
+    SIGNAL pulso_s     : STD_LOGIC;
+    SIGNAL display0_s  : STD_LOGIC_VECTOR(6 DOWNTO 0);
+    SIGNAL display1_s  : STD_LOGIC_VECTOR(6 DOWNTO 0);
+    SIGNAL display2_s  : STD_LOGIC_VECTOR(6 DOWNTO 0);
+    SIGNAL display3_s  : STD_LOGIC_VECTOR(6 DOWNTO 0);
+    SIGNAL display4_s  : STD_LOGIC_VECTOR(6 DOWNTO 0);
+
+    SIGNAL caso    : INTEGER   := 0;
+    SIGNAL keep_clk: STD_LOGIC := '0';
+
+BEGIN
+
+    clock_in <= (NOT clock_in) AND keep_clk AFTER T / 2;
+
+    dut : jogo_tempo_reacao
+    PORT MAP (
+        clock       => clock_in,   reset    => reset_in,
+        jogar       => jogar_in,
+        resposta_j1 => resp_j1,    resposta_j2 => resp_j2,
+        show_min    => show_min_in,
+        display0    => display0_s, display1 => display1_s,
+        display2    => display2_s, display3 => display3_s,
+        display4    => display4_s,
+        ligado      => ligado_s,   pulso    => pulso_s,
+        estimulo    => estimulo_s, erro     => erro_s,
+        pronto      => pronto_s
+    );
+
+    stimulus : PROCESS IS
+
+        PROCEDURE pulsa_jogar IS
+        BEGIN
+            jogar_in <= '1'; WAIT FOR 2*T; jogar_in <= '0';
+        END PROCEDURE;
+
+        PROCEDURE aplica_reset IS
+        BEGIN
+            reset_in <= '1'; WAIT FOR 4*T;
+            reset_in <= '0'; WAIT FOR 2*T;
+        END PROCEDURE;
+
+        PROCEDURE reage_j1 (ciclos : IN INTEGER) IS
+        BEGIN
+            WAIT UNTIL estimulo_s = '1';
+            WAIT FOR ciclos * T;
+            resp_j1 <= '1'; WAIT FOR 2*T; resp_j1 <= '0';
+        END PROCEDURE;
+
+        PROCEDURE reage_j2 (ciclos : IN INTEGER) IS
+        BEGIN
+            WAIT UNTIL estimulo_s = '1';
+            WAIT FOR ciclos * T;
+            resp_j2 <= '1'; WAIT FOR 2*T; resp_j2 <= '0';
+        END PROCEDURE;
+
+        PROCEDURE verifica_vencedor (esperado : IN STD_LOGIC_VECTOR(6 DOWNTO 0);
+                                     msg      : IN STRING) IS
+        BEGIN
+            WAIT UNTIL pronto_s = '1';
+            WAIT FOR T;
+            ASSERT display4_s = esperado
+                REPORT msg SEVERITY error;
+        END PROCEDURE;
+
+    BEGIN
+        ASSERT false REPORT "=== INICIO DA SIMULACAO ===" SEVERITY note;
+        keep_clk <= '1';
+
+        -- CT0: reset inicial
+        caso <= 0;
+        aplica_reset;
+        ASSERT ligado_s   = '0' REPORT "CT0: ligado != 0"   SEVERITY error;
+        ASSERT estimulo_s = '0' REPORT "CT0: estimulo != 0" SEVERITY error;
+        ASSERT erro_s     = '0' REPORT "CT0: erro != 0"     SEVERITY error;
+        ASSERT pronto_s   = '0' REPORT "CT0: pronto != 0"   SEVERITY error;
+        ASSERT display4_s = SEG_OFF REPORT "CT0: HEX4 nao apagado" SEVERITY error;
+        ASSERT false REPORT "CT0: OK" SEVERITY note;
+
+        -- CT1: J2 vence (5 vs 3 ciclos)
+        caso <= 1;
+        ASSERT false REPORT "CT1: J1=5 J2=3 -> J2 vence" SEVERITY note;
+        pulsa_jogar;
+        reage_j1(5); reage_j2(3);
+        verifica_vencedor(SEG_2, "CT1 FALHOU: J2 deveria vencer");
+        ASSERT false REPORT "CT1: OK" SEVERITY note;
+        WAIT FOR 4*T;
+
+        -- CT2: J1 vence (2 vs 6 ciclos)
+        caso <= 2;
+        ASSERT false REPORT "CT2: J1=2 J2=6 -> J1 vence" SEVERITY note;
+        pulsa_jogar;
+        reage_j1(2); reage_j2(6);
+        verifica_vencedor(SEG_1, "CT2 FALHOU: J1 deveria vencer");
+        ASSERT false REPORT "CT2: OK" SEVERITY note;
+        WAIT FOR 4*T;
+
+        -- CT3: empate (4 vs 4 ciclos) -> J1 vence por desempate
+        caso <= 3;
+        ASSERT false REPORT "CT3: empate J1=J2=4 -> J1 vence" SEVERITY note;
+        pulsa_jogar;
+        reage_j1(4); reage_j2(4);
+        verifica_vencedor(SEG_1, "CT3 FALHOU: empate deve vencer J1");
+        ASSERT false REPORT "CT3: OK" SEVERITY note;
+        WAIT FOR 4*T;
+
+        -- CT4: burla de J1
+        caso <= 4;
+        ASSERT false REPORT "CT4: burla de J1" SEVERITY note;
+        pulsa_jogar;
+        WAIT FOR 5*T;
+        resp_j1 <= '1';
+        WAIT UNTIL erro_s = '1';
+        ASSERT false REPORT "CT4: erro='1' OK (burla J1)" SEVERITY note;
+        resp_j1 <= '0'; WAIT FOR 2*T;
+        pulsa_jogar; WAIT FOR 4*T;
+        ASSERT pronto_s = '0' REPORT "CT4: jogar nao reinicia em falha" SEVERITY error;
+        aplica_reset;
+        ASSERT erro_s = '0' REPORT "CT4: erro deve zerar apos reset" SEVERITY error;
+        ASSERT false REPORT "CT4: OK" SEVERITY note;
+
+        -- CT5: burla de J2
+        caso <= 5;
+        ASSERT false REPORT "CT5: burla de J2" SEVERITY note;
+        pulsa_jogar;
+        reage_j1(3);
+        WAIT FOR 5*T;
+        resp_j2 <= '1';
+        WAIT UNTIL erro_s = '1';
+        ASSERT false REPORT "CT5: erro='1' OK (burla J2)" SEVERITY note;
+        resp_j2 <= '0';
+        aplica_reset;
+        ASSERT false REPORT "CT5: OK" SEVERITY note;
+
+        -- CT6: show_min (A3)
+        caso <= 6;
+        ASSERT false REPORT "CT6: chave show_min (A3)" SEVERITY note;
+        pulsa_jogar;
+        reage_j1(3); reage_j2(3);
+        WAIT UNTIL pronto_s = '1';
+        WAIT FOR 2*T;
+        show_min_in <= '1';
+        WAIT FOR 4*T;
+        ASSERT false REPORT "CT6: show_min=1, HEX0-3 exibe minimo" SEVERITY note;
+        show_min_in <= '0'; WAIT FOR 2*T;
+        ASSERT false REPORT "CT6: OK" SEVERITY note;
+
+        -- CT7: reset zera minimo -> HEX0-3 = "9999"
+        -- hex7seg: 4'b1001 (9) -> "0010000"
+        caso <= 7;
+        ASSERT false REPORT "CT7: reset zera tempo_min" SEVERITY note;
+        aplica_reset;
+        show_min_in <= '1'; WAIT FOR 4*T;
+        ASSERT display0_s = "0010000" REPORT "CT7: dig0 != 9" SEVERITY error;
+        ASSERT display1_s = "0010000" REPORT "CT7: dig1 != 9" SEVERITY error;
+        ASSERT display2_s = "0010000" REPORT "CT7: dig2 != 9" SEVERITY error;
+        ASSERT display3_s = "0010000" REPORT "CT7: dig3 != 9" SEVERITY error;
+        ASSERT false REPORT "CT7: OK - minimo zerado para 9999" SEVERITY note;
+        show_min_in <= '0'; WAIT FOR 2*T;
+
+        ASSERT false REPORT "=== FIM DA SIMULACAO ===" SEVERITY note;
+        keep_clk <= '0';
+        WAIT;
+    END PROCESS;
+
+END ARCHITECTURE;
+\end{lstlisting}
+
+\subsection{Descrição dos Casos de Teste}
+
+\begin{description}
+  \item[CT0:] Aplica reset e verifica todas as saídas inativas
+    (\texttt{ligado, estimulo, erro, pronto} = '0'; HEX4 apagado).
+  \item[CT1:] J1 reage em 5 ciclos, J2 em 3 ciclos.
+    \texttt{ASSERT} verifica \texttt{display4} = \texttt{"0100100"} (``2'').
+  \item[CT2:] J1 reage em 2 ciclos, J2 em 6 ciclos.
+    \texttt{ASSERT} verifica \texttt{display4} = \texttt{"1111001"} (``1'').
+  \item[CT3:] Ambos reagem em 4 ciclos (empate).
+    \texttt{ASSERT} verifica que J1 vence pelo critério de desempate
+    (\texttt{display4} = \texttt{"1111001"}).
+  \item[CT4:] J1 pressiona 5 ciclos antes do estímulo. \texttt{WAIT UNTIL
+    erro\_s='1'} confirma burla; testa que \texttt{jogar} não libera o
+    estado de falha; reset restaura o sistema.
+  \item[CT5:] J1 reage normalmente (3 ciclos); J2 pressiona 5 ciclos antes
+    do seu estímulo. Verifica \texttt{erro\_s='1'} e reset.
+  \item[CT6:] Após rodada válida, ativa \texttt{show\_min}='1' e observa
+    que HEX0--3 exibe o mínimo histórico.
+  \item[CT7:] Aplica reset e ativa \texttt{show\_min}='1'. Verifica que
+    cada dígito de \texttt{tempo\_min} exibe ``9''
+    (\texttt{display0..3} = \texttt{"0010000"}).
+\end{description}
+
+% ================================================================
+\section{Código VHDL -- Unidade de Controle}
+
+\begin{lstlisting}[caption={Unidade de Controle -- \texttt{jogo\_tempo\_reacao\_uc.vhd}},
+                   label={lst:uc}]
+LIBRARY ieee;
+USE ieee.std_logic_1164.ALL;
+USE ieee.numeric_std.ALL;
+
+-- Unidade de Controle do Jogo do Tempo de Reacao
+-- Extensoes A3 (menor tempo via chave) e B2 (dois jogadores, exibe vencedor)
+--
+-- Estados:
+--   inicial   : aguarda sinal jogar
+--   j1_liga   : vez do jogador 1, aguardando estimulo
+--   j1_conta  : medindo reacao do jogador 1
+--   j1_fim    : salva tempo J1, aguarda interface resetar
+--   j2_liga   : vez do jogador 2, aguardando estimulo
+--   j2_conta  : medindo reacao do jogador 2
+--   j2_fim    : salva tempo J2, aguarda interface resetar
+--   resultado : exibe vencedor (pronto='1')
+--   falha     : erro (burla detectada), aguarda reset
+
+ENTITY jogo_tempo_reacao_uc IS
+    PORT (
+        clock            : IN  STD_LOGIC;
+        reset            : IN  STD_LOGIC;
+        jogar            : IN  STD_LOGIC;
+        estimulo         : IN  STD_LOGIC;
+        erro_interface   : IN  STD_LOGIC;
+        pronto_medidor   : IN  STD_LOGIC;
+        pronto_interface : IN  STD_LOGIC;
+        iniciar          : OUT STD_LOGIC;
+        sel_j2           : OUT STD_LOGIC;
+        salva_j1         : OUT STD_LOGIC;
+        salva_j2         : OUT STD_LOGIC;
+        pronto           : OUT STD_LOGIC;
+        mostra_resultado : OUT STD_LOGIC;
+        db_estado        : OUT STD_LOGIC_VECTOR(3 DOWNTO 0)
+    );
+END ENTITY jogo_tempo_reacao_uc;
+
+ARCHITECTURE arch OF jogo_tempo_reacao_uc IS
+    TYPE tipo_estado IS (
+        inicial,
+        j1_liga, j1_conta, j1_fim,
+        j2_liga, j2_conta, j2_fim,
+        resultado, falha
+    );
+    SIGNAL estado, posterior : tipo_estado;
+BEGIN
+
+    seq : PROCESS (clock, reset)
+    BEGIN
+        IF reset = '1' THEN
+            estado <= inicial;
+        ELSIF rising_edge(clock) THEN
+            estado <= posterior;
+        END IF;
+    END PROCESS seq;
+
+    comb : PROCESS (estado, jogar, estimulo, erro_interface,
+                    pronto_medidor, pronto_interface)
+    BEGIN
+        -- saidas padrao
+        iniciar          <= '0';
+        sel_j2           <= '0';
+        salva_j1         <= '0';
+        salva_j2         <= '0';
+        pronto           <= '0';
+        mostra_resultado <= '0';
+        db_estado        <= "0000";
+        posterior        <= estado;
+
+        CASE estado IS
+
+            WHEN inicial =>
+                db_estado <= "0001";
+                IF jogar = '1' THEN
+                    posterior <= j1_liga;
+                END IF;
+
+            -- Vez do Jogador 1: aguarda estimulo
+            WHEN j1_liga =>
+                db_estado <= "0010";
+                iniciar   <= '1';
+                sel_j2    <= '0';
+                IF erro_interface = '1' THEN
+                    posterior <= falha;
+                ELSIF estimulo = '1' THEN
+                    posterior <= j1_conta;
+                END IF;
+
+            -- Vez do Jogador 1: mede tempo de reacao
+            WHEN j1_conta =>
+                db_estado <= "0011";
+                iniciar   <= '1';
+                sel_j2    <= '0';
+                IF pronto_medidor = '1' THEN
+                    salva_j1  <= '1';   -- captura tempo J1 (1 ciclo)
+                    posterior <= j1_fim;
+                END IF;
+
+            -- Aguarda J1 soltar botao
+            WHEN j1_fim =>
+                db_estado <= "0100";
+                iniciar   <= '0';
+                sel_j2    <= '0';
+                IF pronto_interface = '0' THEN
+                    posterior <= j2_liga;
+                END IF;
+
+            -- Vez do Jogador 2: aguarda estimulo
+            WHEN j2_liga =>
+                db_estado <= "0101";
+                iniciar   <= '1';
+                sel_j2    <= '1';
+                IF erro_interface = '1' THEN
+                    posterior <= falha;
+                ELSIF estimulo = '1' THEN
+                    posterior <= j2_conta;
+                END IF;
+
+            -- Vez do Jogador 2: mede tempo de reacao
+            WHEN j2_conta =>
+                db_estado <= "0110";
+                iniciar   <= '1';
+                sel_j2    <= '1';
+                IF pronto_medidor = '1' THEN
+                    salva_j2  <= '1';   -- captura tempo J2 (1 ciclo)
+                    posterior <= j2_fim;
+                END IF;
+
+            -- Aguarda J2 soltar botao
+            WHEN j2_fim =>
+                db_estado <= "0111";
+                iniciar   <= '0';
+                sel_j2    <= '1';
+                IF pronto_interface = '0' THEN
+                    posterior <= resultado;
+                END IF;
+
+            -- Exibe vencedor; novo jogo com jogar='1'
+            WHEN resultado =>
+                db_estado        <= "1000";
+                pronto           <= '1';
+                mostra_resultado <= '1';
+                IF jogar = '1' THEN
+                    posterior <= j1_liga;
+                END IF;
+
+            -- Burla detectada: permanece ate reset
+            WHEN falha =>
+                db_estado <= "1001";
+                posterior <= falha;
+
+        END CASE;
+    END PROCESS comb;
+END ARCHITECTURE arch;
+\end{lstlisting}
+
+% ================================================================
+\section{Código VHDL -- Top-Level}
+
+\begin{lstlisting}[caption={Top-Level -- \texttt{jogo\_tempo\_reacao.vhd}},
+                   label={lst:top}]
+LIBRARY ieee;
+USE ieee.std_logic_1164.ALL;
+USE ieee.numeric_std.ALL;
+
+-- Jogo do Tempo de Reacao - Top Level
+-- A3: chave show_min exibe menor tempo historico em HEX0-3
+-- B2: dois jogadores; HEX0-3 mostra tempo do vencedor,
+--     HEX4 exibe "1" ou "2" (jogador vencedor)
+
+ENTITY jogo_tempo_reacao IS
+    PORT (
+        clock       : IN  STD_LOGIC;
+        reset       : IN  STD_LOGIC;
+        jogar       : IN  STD_LOGIC;
+        resposta_j1 : IN  STD_LOGIC;
+        resposta_j2 : IN  STD_LOGIC;
+        show_min    : IN  STD_LOGIC;
+        display0    : OUT STD_LOGIC_VECTOR(6 DOWNTO 0);
+        display1    : OUT STD_LOGIC_VECTOR(6 DOWNTO 0);
+        display2    : OUT STD_LOGIC_VECTOR(6 DOWNTO 0);
+        display3    : OUT STD_LOGIC_VECTOR(6 DOWNTO 0);
+        display4    : OUT STD_LOGIC_VECTOR(6 DOWNTO 0);
+        ligado      : OUT STD_LOGIC;
+        pulso       : OUT STD_LOGIC;
+        estimulo    : OUT STD_LOGIC;
+        erro        : OUT STD_LOGIC;
+        pronto      : OUT STD_LOGIC
+    );
+END ENTITY jogo_tempo_reacao;
+
+ARCHITECTURE behavioral OF jogo_tempo_reacao IS
+
+    COMPONENT jogo_tempo_reacao_uc IS
+        PORT (
+            clock            : IN  STD_LOGIC;
+            reset            : IN  STD_LOGIC;
+            jogar            : IN  STD_LOGIC;
+            estimulo         : IN  STD_LOGIC;
+            erro_interface   : IN  STD_LOGIC;
+            pronto_medidor   : IN  STD_LOGIC;
+            pronto_interface : IN  STD_LOGIC;
+            iniciar          : OUT STD_LOGIC;
+            sel_j2           : OUT STD_LOGIC;
+            salva_j1         : OUT STD_LOGIC;
+            salva_j2         : OUT STD_LOGIC;
+            pronto           : OUT STD_LOGIC;
+            mostra_resultado : OUT STD_LOGIC;
+            db_estado        : OUT STD_LOGIC_VECTOR(3 DOWNTO 0)
+        );
+    END COMPONENT;
+
+    COMPONENT interface_leds_botoes IS
+      PORT (
+        clock             : IN  STD_LOGIC;
+        reset             : IN  STD_LOGIC;
+        iniciar           : IN  STD_LOGIC;
+        resposta          : IN  STD_LOGIC;
+        ligado            : OUT STD_LOGIC;
+        estimulo          : OUT STD_LOGIC;
+        pulso             : OUT STD_LOGIC;
+        pulso_scope       : OUT STD_LOGIC;
+        erro              : OUT STD_LOGIC;
+        pronto            : OUT STD_LOGIC;
+        burlou_assinc     : OUT STD_LOGIC;
+        db_estado_display : OUT STD_LOGIC_VECTOR(6 DOWNTO 0)
+      );
+    END COMPONENT;
+
+    COMPONENT medidor_largura IS
+        PORT (
+            clock         : IN  STD_LOGIC;
+            reset         : IN  STD_LOGIC;
+            liga          : IN  STD_LOGIC;
+            sinal         : IN  STD_LOGIC;
+            erro          : IN  STD_LOGIC;
+            display0      : OUT STD_LOGIC_VECTOR(6 DOWNTO 0);
+            display1      : OUT STD_LOGIC_VECTOR(6 DOWNTO 0);
+            display2      : OUT STD_LOGIC_VECTOR(6 DOWNTO 0);
+            display3      : OUT STD_LOGIC_VECTOR(6 DOWNTO 0);
+            db_estado     : OUT STD_LOGIC_VECTOR(6 DOWNTO 0);
+            pronto        : OUT STD_LOGIC;
+            fim           : OUT STD_LOGIC;
+            db_clock      : OUT STD_LOGIC;
+            db_sinal      : OUT STD_LOGIC;
+            db_zeraCont   : OUT STD_LOGIC;
+            db_contaCont  : OUT STD_LOGIC;
+            db_valorCont0 : OUT STD_LOGIC_VECTOR(3 DOWNTO 0);
+            db_valorCont1 : OUT STD_LOGIC_VECTOR(3 DOWNTO 0);
+            db_valorCont2 : OUT STD_LOGIC_VECTOR(3 DOWNTO 0);
+            db_valorCont3 : OUT STD_LOGIC_VECTOR(3 DOWNTO 0)
+        );
+    END COMPONENT;
+
+    COMPONENT hex7seg IS
+        PORT (
+            hex     : IN  STD_LOGIC_VECTOR(3 DOWNTO 0);
+            display : OUT STD_LOGIC_VECTOR(6 DOWNTO 0)
+        );
+    END COMPONENT;
+
+    -- Sinais de controle da UC
+    SIGNAL iniciar_int      : STD_LOGIC;
+    SIGNAL sel_j2           : STD_LOGIC;
+    SIGNAL salva_j1         : STD_LOGIC;
+    SIGNAL salva_j2         : STD_LOGIC;
+    SIGNAL mostra_resultado : STD_LOGIC;
+
+    -- Sinais da interface
+    SIGNAL estimulo_int         : STD_LOGIC;
+    SIGNAL pulso_int            : STD_LOGIC;
+    SIGNAL erro_int             : STD_LOGIC;
+    SIGNAL pronto_interface_int : STD_LOGIC;
+    SIGNAL resposta_mux         : STD_LOGIC;
+
+    -- Sinais do medidor
+    SIGNAL pronto_medidor_int           : STD_LOGIC;
+    SIGNAL q0_m, q1_m, q2_m, q3_m      : STD_LOGIC_VECTOR(3 DOWNTO 0);
+
+    -- Registradores de tempo (BCD 4 digitos = 16 bits)
+    -- Comparacao unsigned valida: digitos BCD em 0..9 preservam ordem
+    SIGNAL tempo_j1  : STD_LOGIC_VECTOR(15 DOWNTO 0);
+    SIGNAL tempo_j2  : STD_LOGIC_VECTOR(15 DOWNTO 0);
+    SIGNAL tempo_min : STD_LOGIC_VECTOR(15 DOWNTO 0);
+
+    SIGNAL tempo_atual  : STD_LOGIC_VECTOR(15 DOWNTO 0);
+    SIGNAL tempo_winner : STD_LOGIC_VECTOR(15 DOWNTO 0);
+    SIGNAL j1_vence     : STD_LOGIC;
+
+    -- Displays por fonte
+    SIGNAL disp0_med, disp1_med, disp2_med, disp3_med : STD_LOGIC_VECTOR(6 DOWNTO 0);
+    SIGNAL disp0_min, disp1_min, disp2_min, disp3_min : STD_LOGIC_VECTOR(6 DOWNTO 0);
+    SIGNAL disp0_win, disp1_win, disp2_win, disp3_win : STD_LOGIC_VECTOR(6 DOWNTO 0);
+
+BEGIN
+
+    -- Mux de resposta
+    resposta_mux <= resposta_j2 WHEN sel_j2 = '1' ELSE resposta_j1;
+
+    -- Tempo atual do medidor (BCD, MSB=Q3)
+    tempo_atual <= q3_m & q2_m & q1_m & q0_m;
+
+    -- Vencedor: J1 ganha em caso de empate
+    j1_vence     <= '1' WHEN unsigned(tempo_j1) <= unsigned(tempo_j2) ELSE '0';
+    tempo_winner <= tempo_j1 WHEN j1_vence = '1' ELSE tempo_j2;
+
+    -- Registradores de tempo e minimo historico
+    PROCESS (clock, reset)
+    BEGIN
+        IF reset = '1' THEN
+            tempo_j1  <= x"9999";
+            tempo_j2  <= x"9999";
+            tempo_min <= x"9999";
+        ELSIF rising_edge(clock) THEN
+            IF salva_j1 = '1' THEN
+                tempo_j1 <= tempo_atual;
+                IF unsigned(tempo_atual) < unsigned(tempo_min) THEN
+                    tempo_min <= tempo_atual;
+                END IF;
+            END IF;
+            IF salva_j2 = '1' THEN
+                tempo_j2 <= tempo_atual;
+                IF unsigned(tempo_atual) < unsigned(tempo_min) THEN
+                    tempo_min <= tempo_atual;
+                END IF;
+            END IF;
+        END IF;
+    END PROCESS;
+
+    -- Mux HEX0-3: show_min > mostra_resultado > medicao ao vivo
+    display0 <= disp0_min WHEN show_min = '1' ELSE
+                disp0_win WHEN mostra_resultado = '1' ELSE disp0_med;
+    display1 <= disp1_min WHEN show_min = '1' ELSE
+                disp1_win WHEN mostra_resultado = '1' ELSE disp1_med;
+    display2 <= disp2_min WHEN show_min = '1' ELSE
+                disp2_win WHEN mostra_resultado = '1' ELSE disp2_med;
+    display3 <= disp3_min WHEN show_min = '1' ELSE
+                disp3_win WHEN mostra_resultado = '1' ELSE disp3_med;
+
+    -- HEX4: apagado fora do resultado; "1" ou "2" no resultado
+    display4 <= "1111111" WHEN mostra_resultado = '0' ELSE
+                "1111001" WHEN j1_vence = '1' ELSE
+                "0100100";
+
+    ligado   <= iniciar_int;
+    pulso    <= pulso_int;
+    estimulo <= estimulo_int;
+    erro     <= erro_int;
+
+    U1 : interface_leds_botoes
+    PORT MAP (
+        clock => clock, reset => reset,
+        iniciar => iniciar_int, resposta => resposta_mux,
+        ligado => OPEN, estimulo => estimulo_int,
+        pulso => pulso_int, pulso_scope => OPEN,
+        erro => erro_int, pronto => pronto_interface_int,
+        burlou_assinc => OPEN, db_estado_display => OPEN
+    );
+
+    U2 : medidor_largura
+    PORT MAP (
+        clock => clock, reset => reset,
+        liga => iniciar_int, sinal => pulso_int, erro => erro_int,
+        display0 => disp0_med, display1 => disp1_med,
+        display2 => disp2_med, display3 => disp3_med,
+        db_estado => OPEN, pronto => pronto_medidor_int,
+        fim => OPEN, db_clock => OPEN, db_sinal => OPEN,
+        db_zeraCont => OPEN, db_contaCont => OPEN,
+        db_valorCont0 => q0_m, db_valorCont1 => q1_m,
+        db_valorCont2 => q2_m, db_valorCont3 => q3_m
+    );
+
+    U3 : jogo_tempo_reacao_uc
+    PORT MAP (
+        clock => clock, reset => reset, jogar => jogar,
+        estimulo => estimulo_int, erro_interface => erro_int,
+        pronto_medidor => pronto_medidor_int,
+        pronto_interface => pronto_interface_int,
+        iniciar => iniciar_int, sel_j2 => sel_j2,
+        salva_j1 => salva_j1, salva_j2 => salva_j2,
+        pronto => pronto, mostra_resultado => mostra_resultado,
+        db_estado => OPEN
+    );
+
+    -- hex7seg para minimo historico (A3)
+    min_d0 : hex7seg PORT MAP (hex => tempo_min(3  DOWNTO 0),  display => disp0_min);
+    min_d1 : hex7seg PORT MAP (hex => tempo_min(7  DOWNTO 4),  display => disp1_min);
+    min_d2 : hex7seg PORT MAP (hex => tempo_min(11 DOWNTO 8),  display => disp2_min);
+    min_d3 : hex7seg PORT MAP (hex => tempo_min(15 DOWNTO 12), display => disp3_min);
+
+    -- hex7seg para tempo do vencedor (B2)
+    win_d0 : hex7seg PORT MAP (hex => tempo_winner(3  DOWNTO 0),  display => disp0_win);
+    win_d1 : hex7seg PORT MAP (hex => tempo_winner(7  DOWNTO 4),  display => disp1_win);
+    win_d2 : hex7seg PORT MAP (hex => tempo_winner(11 DOWNTO 8),  display => disp2_win);
+    win_d3 : hex7seg PORT MAP (hex => tempo_winner(15 DOWNTO 12), display => disp3_win);
+
+END ARCHITECTURE behavioral;
+\end{lstlisting}
+
+% ================================================================
+\section{Atribuição de Pinos (Pin Planner)}
+
+A tabela abaixo detalha a correspondência entre os sinais do projeto (Node Name) e os pinos físicos da FPGA (Location), conforme extraído das imagens.
+
+\begin{longtable}{ll}
+\caption{Mapeamento de Entradas e Saídas} \\
+\toprule
+\textbf{Nome do Nó (Node Name)} & \textbf{Localização (Location)} \\
+\midrule
+\endfirsthead
+
+\toprule
+\textbf{Nome do Nó (Node Name)} & \textbf{Localização (Location)} \\
+\midrule
+\endhead
+
+\midrule
+\multicolumn{2}{r}{\textit{Continua na próxima página...}} \\
+\bottomrule
+\endfoot
+
+\bottomrule
+\endlastfoot
+
+clock         & PIN\_N16 \\
+display0[0]   & PIN\_U21 \\
+display0[1]   & PIN\_V21 \\
+display0[2]   & PIN\_W22 \\
+display0[3]   & PIN\_W21 \\
+display0[4]   & PIN\_Y22 \\
+display0[5]   & PIN\_Y21 \\
+display0[6]   & PIN\_AA22 \\
+display1[0]   & PIN\_AA20 \\
+display1[1]   & PIN\_AB20 \\
+display1[2]   & PIN\_AA19 \\
+display1[3]   & PIN\_AA18 \\
+display1[4]   & PIN\_AB18 \\
+display1[5]   & PIN\_AA17 \\
+display1[6]   & PIN\_U22 \\
+display2[0]   & PIN\_Y19 \\
+display2[1]   & PIN\_AB17 \\
+display2[2]   & PIN\_aa10 \\
+display2[3]   & PIN\_y14 \\
+display2[4]   & PIN\_V14 \\
+display2[5]   & PIN\_AB22 \\
+display2[6]   & PIN\_AB21 \\
+display3[0]   & PIN\_Y16 \\
+display3[1]   & PIN\_W16 \\
+display3[2]   & PIN\_Y17 \\
+display3[3]   & PIN\_V16 \\
+display3[4]   & PIN\_U17 \\
+display3[5]   & PIN\_V18 \\
+display3[6]   & PIN\_V19 \\
+display4[0]   & PIN\_U20 \\
+display4[1]   & PIN\_Y20 \\
+display4[2]   & PIN\_V20 \\
+display4[3]   & PIN\_U16 \\
+display4[4]   & PIN\_U15 \\
+display4[5]   & PIN\_Y15 \\
+display4[6]   & PIN\_P9 \\
+erro          & PIN\_T15 \\
+estimulo      & PIN\_T18 \\
+jogar         & PIN\_V13 \\
+ligado        & PIN\_AA2 \\
+pronto        & PIN\_L1 \\
+pulso         & PIN\_T20 \\
+reset         & PIN\_U13 \\
+resposta\_j1  & PIN\_K20 \\
+resposta\_j2  & PIN\_K22 \\
+show\_min     & PIN\_T13 \\
+
+\end{longtable}
+
+\noindent\textbf{Nota:} os displays da DE0-CV são de ânodo comum (nível '0'
+acende o segmento). O componente \texttt{hex7seg} já gera os códigos nessa
+convenção.
+
+% ================================================================
+\section{Formas de Onda da Simulação}
+
+\begin{figure}[H]
+  \centering
+  \fbox{\parbox{0.9\textwidth}{\centering\vspace{4cm}
+    \textit{[Inserir formas de onda ModelSim -- CT1: J1 e J2 reagindo,
+    \texttt{display4} exibindo ``2'']}
+  \vspace{0.5cm}}}
+  \caption{CT1: J2 vence (tempo J1 $>$ tempo J2); \texttt{display4}=``2''.}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \fbox{\parbox{0.9\textwidth}{\centering\vspace{4cm}
+    \textit{[Inserir formas de onda ModelSim -- CT3: burla de J1,
+    \texttt{erro}='1', estado \texttt{falha}]}
+  \vspace{0.5cm}}}
+  \caption{CT3: burla de J1 antes do estímulo; \texttt{erro}='1'.}
+\end{figure}
+
+% ================================================================
+\section{Conclusão do Planejamento}
+
+O projeto combina A3 e B2 sobre o circuito base do Jogo do Tempo de Reação.
+Decisões de destaque:
+
+\begin{itemize}
+  \item Reaproveitamento de \texttt{interface\_leds\_botoes} e
+        \texttt{medidor\_largura} com mux de resposta, minimizando área.
+  \item Comparação BCD via \texttt{unsigned} (propriedade de preservação de
+        ordem para dígitos 0--9), eliminando lógica extra.
+  \item Sincronização via \texttt{pronto\_interface} garante transição limpa
+        entre os turnos dos jogadores.
+  \item Sentinela \texttt{0x9999} assegura correta inicialização do mínimo.
+\end{itemize}
+
+\end{document}
